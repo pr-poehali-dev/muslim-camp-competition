@@ -1,92 +1,165 @@
 import { useState, useEffect, useRef } from 'react';
 import Icon from '@/components/ui/icon';
 
+interface Member {
+  id: string;
+  name: string;
+  likes: number;
+}
+
 interface Squad {
   id: number;
   name: string;
   handle: string;
   emoji: string;
   gradient: string;
-  likes: number;
+  teamLikes: number;
+  members: Member[];
 }
 
-const STORAGE_KEY = 'camp_squad_likes_v1';
-const ORDER_KEY = 'camp_squad_order_v1';
+const OLD_STORAGE_KEY = 'camp_squad_likes_v1';
+const TEAM_LIKES_KEY = 'camp_squad_team_likes_v2';
+const MEMBER_LIKES_KEY = 'camp_squad_member_likes_v2';
+const SQUAD_ORDER_KEY = 'camp_squad_order_v2';
+const MEMBER_ORDER_KEY = 'camp_member_order_v2';
+const COUNSELOR_KEY = 'camp_counselor_mode_v1';
+const PASSWORD = 'blog2026';
 
-const initialSquads: Squad[] = [
-  { id: 1, name: 'Отряд 1', handle: '@otryad_one', emoji: '🌷', gradient: 'from-[hsl(350,60%,88%)] to-[hsl(30,50%,86%)]', likes: 0 },
-  { id: 2, name: 'Отряд 2', handle: '@otryad_two', emoji: '🌿', gradient: 'from-[hsl(140,30%,82%)] to-[hsl(40,45%,86%)]', likes: 0 },
-  { id: 3, name: 'Отряд 3', handle: '@otryad_three', emoji: '☀️', gradient: 'from-[hsl(45,60%,84%)] to-[hsl(28,50%,84%)]', likes: 0 },
-  { id: 4, name: 'Отряд 4', handle: '@otryad_four', emoji: '🍑', gradient: 'from-[hsl(20,55%,86%)] to-[hsl(350,50%,88%)]', likes: 0 },
+const baseSquads: Omit<Squad, 'teamLikes' | 'members'>[] = [
+  { id: 1, name: 'Отряд 1', handle: '@otryad_one', emoji: '🌷', gradient: 'from-[hsl(350,60%,88%)] to-[hsl(30,50%,86%)]' },
+  { id: 2, name: 'Отряд 2', handle: '@otryad_two', emoji: '🌿', gradient: 'from-[hsl(140,30%,82%)] to-[hsl(40,45%,86%)]' },
+  { id: 3, name: 'Отряд 3', handle: '@otryad_three', emoji: '☀️', gradient: 'from-[hsl(45,60%,84%)] to-[hsl(28,50%,84%)]' },
+  { id: 4, name: 'Отряд 4', handle: '@otryad_four', emoji: '🍑', gradient: 'from-[hsl(20,55%,86%)] to-[hsl(350,50%,88%)]' },
 ];
 
-const PASSWORD = 'blog2026';
+const makeMembers = (squadId: number): Member[] =>
+  Array.from({ length: 5 }, (_, i) => ({ id: `${squadId}-${i + 1}`, name: `Участница ${i + 1}`, likes: 0 }));
+
+const loadSquads = (): Squad[] => {
+  let teamMap: Record<number, number> = {};
+  let memberMap: Record<string, number> = {};
+  try {
+    const savedTeam = localStorage.getItem(TEAM_LIKES_KEY);
+    if (savedTeam) {
+      teamMap = JSON.parse(savedTeam);
+    } else {
+      const old = localStorage.getItem(OLD_STORAGE_KEY);
+      if (old) teamMap = JSON.parse(old);
+    }
+  } catch { /* ignore */ }
+  try {
+    const savedMembers = localStorage.getItem(MEMBER_LIKES_KEY);
+    if (savedMembers) memberMap = JSON.parse(savedMembers);
+  } catch { /* ignore */ }
+
+  return baseSquads.map((s) => ({
+    ...s,
+    teamLikes: teamMap[s.id] ?? 0,
+    members: makeMembers(s.id).map((m) => ({ ...m, likes: memberMap[m.id] ?? 0 })),
+  }));
+};
+
+const squadTotal = (s: Squad) => s.teamLikes + s.members.reduce((sum, m) => sum + m.likes, 0);
 
 interface FloatingHeart {
   id: number;
 }
 
 const Index = () => {
-  const [squads, setSquads] = useState<Squad[]>(() => {
+  const [squads, setSquads] = useState<Squad[]>(loadSquads);
+
+  const [squadOrder, setSquadOrder] = useState<number[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as Record<number, number>;
-        return initialSquads.map((s) => ({ ...s, likes: parsed[s.id] ?? 0 }));
-      }
+      const saved = localStorage.getItem(SQUAD_ORDER_KEY);
+      if (saved) return JSON.parse(saved);
     } catch { /* ignore */ }
-    return initialSquads;
+    const initial = loadSquads();
+    return [...initial].sort((a, b) => squadTotal(b) - squadTotal(a)).map((s) => s.id);
   });
 
-  const [order, setOrder] = useState<number[]>(() => {
+  const [membersOrder, setMembersOrder] = useState<Record<number, string[]>>(() => {
     try {
-      const saved = localStorage.getItem(ORDER_KEY);
-      if (saved) return JSON.parse(saved) as number[];
+      const saved = localStorage.getItem(MEMBER_ORDER_KEY);
+      if (saved) return JSON.parse(saved);
     } catch { /* ignore */ }
-    return [...squads].sort((a, b) => b.likes - a.likes).map((s) => s.id);
+    const initial = loadSquads();
+    const map: Record<number, string[]> = {};
+    initial.forEach((s) => { map[s.id] = [...s.members].sort((a, b) => b.likes - a.likes).map((m) => m.id); });
+    return map;
   });
 
-  const [isCounselor, setIsCounselor] = useState(false);
+  const [isCounselor, setIsCounselor] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(COUNSELOR_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
   const [showLogin, setShowLogin] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
-  const [poppingId, setPoppingId] = useState<number | null>(null);
+  const [poppingId, setPoppingId] = useState<string | null>(null);
   const [floats, setFloats] = useState<Record<number, FloatingHeart[]>>({});
   const [justRefreshed, setJustRefreshed] = useState(false);
   const floatCounter = useRef(0);
 
   useEffect(() => {
     const map: Record<number, number> = {};
-    squads.forEach((s) => { map[s.id] = s.likes; });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+    squads.forEach((s) => { map[s.id] = s.teamLikes; });
+    localStorage.setItem(TEAM_LIKES_KEY, JSON.stringify(map));
   }, [squads]);
 
   useEffect(() => {
-    localStorage.setItem(ORDER_KEY, JSON.stringify(order));
-  }, [order]);
+    const map: Record<string, number> = {};
+    squads.forEach((s) => s.members.forEach((m) => { map[m.id] = m.likes; }));
+    localStorage.setItem(MEMBER_LIKES_KEY, JSON.stringify(map));
+  }, [squads]);
+
+  useEffect(() => {
+    localStorage.setItem(SQUAD_ORDER_KEY, JSON.stringify(squadOrder));
+  }, [squadOrder]);
+
+  useEffect(() => {
+    localStorage.setItem(MEMBER_ORDER_KEY, JSON.stringify(membersOrder));
+  }, [membersOrder]);
+
+  useEffect(() => {
+    localStorage.setItem(COUNSELOR_KEY, isCounselor ? 'true' : 'false');
+  }, [isCounselor]);
+
+  const computeSquadOrder = () => [...squads].sort((a, b) => squadTotal(b) - squadTotal(a)).map((s) => s.id);
+  const computeMemberOrder = (squad: Squad) => [...squad.members].sort((a, b) => b.likes - a.likes).map((m) => m.id);
 
   const refreshOrder = () => {
-    const newOrder = [...squads].sort((a, b) => b.likes - a.likes).map((s) => s.id);
-    setOrder(newOrder);
+    setSquadOrder(computeSquadOrder());
+    const map: Record<number, string[]> = {};
+    squads.forEach((s) => { map[s.id] = computeMemberOrder(s); });
+    setMembersOrder(map);
     setJustRefreshed(true);
     setTimeout(() => setJustRefreshed(false), 900);
   };
 
-  const isOrderStale = order.some((id, idx) => {
-    const properOrder = [...squads].sort((a, b) => b.likes - a.likes).map((s) => s.id);
-    return properOrder[idx] !== id;
-  });
+  const isOrderStale = (() => {
+    const properSquadOrder = computeSquadOrder();
+    if (squadOrder.some((id, idx) => properSquadOrder[idx] !== id)) return true;
+    return squads.some((s) => {
+      const proper = computeMemberOrder(s);
+      const current = membersOrder[s.id] || [];
+      return proper.some((id, idx) => current[idx] !== id);
+    });
+  })();
 
-  const sorted = order
+  const sortedSquads = squadOrder
     .map((id) => squads.find((s) => s.id === id))
     .filter((s): s is Squad => Boolean(s));
 
-  const addLike = (id: number) => {
-    if (!isCounselor) return;
-    setSquads((prev) => prev.map((s) => (s.id === id ? { ...s, likes: s.likes + 1 } : s)));
-    setPoppingId(id);
-    setTimeout(() => setPoppingId((p) => (p === id ? null : p)), 500);
+  const popHeart = (key: string) => {
+    setPoppingId(key);
+    setTimeout(() => setPoppingId((p) => (p === key ? null : p)), 500);
+  };
 
+  const spawnFloat = (id: number) => {
     const fid = floatCounter.current++;
     setFloats((prev) => ({ ...prev, [id]: [...(prev[id] || []), { id: fid }] }));
     setTimeout(() => {
@@ -94,9 +167,35 @@ const Index = () => {
     }, 900);
   };
 
-  const removeLike = (id: number) => {
+  const addTeamLike = (id: number) => {
     if (!isCounselor) return;
-    setSquads((prev) => prev.map((s) => (s.id === id ? { ...s, likes: Math.max(0, s.likes - 1) } : s)));
+    setSquads((prev) => prev.map((s) => (s.id === id ? { ...s, teamLikes: s.teamLikes + 1 } : s)));
+    popHeart(`team-${id}`);
+    spawnFloat(id);
+  };
+
+  const removeTeamLike = (id: number) => {
+    if (!isCounselor) return;
+    setSquads((prev) => prev.map((s) => (s.id === id ? { ...s, teamLikes: Math.max(0, s.teamLikes - 1) } : s)));
+  };
+
+  const addMemberLike = (squadId: number, memberId: string) => {
+    if (!isCounselor) return;
+    setSquads((prev) => prev.map((s) => (
+      s.id === squadId
+        ? { ...s, members: s.members.map((m) => (m.id === memberId ? { ...m, likes: m.likes + 1 } : m)) }
+        : s
+    )));
+    popHeart(memberId);
+  };
+
+  const removeMemberLike = (squadId: number, memberId: string) => {
+    if (!isCounselor) return;
+    setSquads((prev) => prev.map((s) => (
+      s.id === squadId
+        ? { ...s, members: s.members.map((m) => (m.id === memberId ? { ...m, likes: Math.max(0, m.likes - 1) } : m)) }
+        : s
+    )));
   };
 
   const handleLogin = () => {
@@ -110,7 +209,8 @@ const Index = () => {
     }
   };
 
-  const rankLabels = ['🥇', '🥈', '🥉', ''];
+  const squadMedals = ['🥇', '🥈', '🥉', ''];
+  const memberMedals = ['🥇', '🥈', '🥉', '', ''];
 
   return (
     <div className="min-h-screen w-full px-4 py-6 sm:px-6 lg:px-8">
@@ -190,91 +290,142 @@ const Index = () => {
       </header>
 
       {/* Cards */}
-      <main className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-6 sm:grid-cols-2">
-        {sorted.map((squad, i) => (
-          <article
-            key={squad.id}
-            className="group relative animate-card-rise overflow-hidden rounded-[2rem] bg-card shadow-[0_12px_40px_-16px_rgba(120,80,60,0.35)] transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_20px_50px_-16px_rgba(120,80,60,0.45)]"
-            style={{ animationDelay: `${i * 90}ms`, opacity: 0 }}
-          >
-            {/* rank badge */}
-            {!isOrderStale && rankLabels[i] && (
-              <div className="absolute right-4 top-4 z-10 text-2xl drop-shadow-sm">{rankLabels[i]}</div>
-            )}
+      <main className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-2">
+        {sortedSquads.map((squad, i) => {
+          const total = squadTotal(squad);
+          const orderedMembers = (membersOrder[squad.id] || computeMemberOrder(squad))
+            .map((mid) => squad.members.find((m) => m.id === mid))
+            .filter((m): m is Member => Boolean(m));
 
-            {/* profile header */}
-            <div className={`bg-gradient-to-br ${squad.gradient} px-6 pb-8 pt-7`}>
-              <div className="flex items-center gap-4">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-card bg-cream text-3xl shadow-md">
-                  {squad.emoji}
-                </div>
-                <div>
-                  <h2 className="font-display text-xl font-bold text-cocoa">{squad.name}</h2>
-                  <p className="text-sm text-cocoa/70">{squad.handle}</p>
-                </div>
-              </div>
-              <p className="mt-4 text-sm italic text-cocoa/80">наш блог только начинается…</p>
-            </div>
-
-            {/* body */}
-            <div className="relative flex flex-col items-center px-6 py-7">
-              {/* floating hearts */}
-              {(floats[squad.id] || []).map((f) => (
-                <span
-                  key={f.id}
-                  className="pointer-events-none absolute left-1/2 top-8 z-20 animate-float-up text-3xl"
-                >
-                  ❤️
-                </span>
-              ))}
-
-              <button
-                onClick={() => addLike(squad.id)}
-                disabled={!isCounselor}
-                aria-label="Поставить лайк"
-                className={`relative text-6xl transition-transform ${poppingId === squad.id ? 'animate-heart-pop' : ''} ${isCounselor ? 'cursor-pointer hover:scale-110 active:scale-95' : 'cursor-not-allowed opacity-60'}`}
-              >
-                ❤️
-              </button>
-
-              <div className="mt-3 font-display text-4xl font-bold text-cocoa">{squad.likes}</div>
-              <div className="text-xs uppercase tracking-wider text-muted-foreground">лайков собрано</div>
-
-              <div className="mt-5 flex w-full items-center gap-2">
-                {isCounselor && (
-                  <button
-                    onClick={() => removeLike(squad.id)}
-                    disabled={squad.likes === 0}
-                    aria-label="Убрать лайк"
-                    className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-secondary text-cocoa transition-all hover:brightness-95 active:scale-95 ${
-                      squad.likes === 0 ? 'cursor-not-allowed opacity-40' : ''
-                    }`}
-                  >
-                    <Icon name="Minus" size={18} />
-                  </button>
-                )}
-                <button
-                  onClick={() => addLike(squad.id)}
-                  disabled={!isCounselor}
-                  className={`flex flex-1 items-center justify-center gap-2 rounded-2xl py-3 text-sm font-semibold transition-all ${
-                    isCounselor
-                      ? 'bg-primary text-primary-foreground hover:brightness-105 active:scale-95'
-                      : 'cursor-not-allowed bg-muted text-muted-foreground'
-                  }`}
-                >
-                  <Icon name="Heart" size={17} />
-                  Поставить лайк
-                </button>
-              </div>
-
-              {!isCounselor && (
-                <p className="mt-3 flex items-center gap-1 text-xs text-muted-foreground">
-                  <Icon name="Lock" size={12} /> Лайки доступны только вожатым
-                </p>
+          return (
+            <article
+              key={squad.id}
+              className="group relative animate-card-rise overflow-hidden rounded-[2rem] bg-card shadow-[0_12px_40px_-16px_rgba(120,80,60,0.35)] transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_20px_50px_-16px_rgba(120,80,60,0.45)]"
+              style={{ animationDelay: `${i * 90}ms`, opacity: 0 }}
+            >
+              {/* rank badge */}
+              {!isOrderStale && squadMedals[i] && (
+                <div className="absolute right-4 top-4 z-10 text-2xl drop-shadow-sm">{squadMedals[i]}</div>
               )}
-            </div>
-          </article>
-        ))}
+
+              {/* profile header */}
+              <div className={`bg-gradient-to-br ${squad.gradient} px-6 pb-8 pt-7`}>
+                <div className="flex items-center gap-4">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-card bg-cream text-3xl shadow-md">
+                    {squad.emoji}
+                  </div>
+                  <div>
+                    <h2 className="font-display text-xl font-bold text-cocoa">{squad.name}</h2>
+                    <p className="text-sm text-cocoa/70">{squad.handle}</p>
+                  </div>
+                </div>
+                <p className="mt-4 text-sm italic text-cocoa/80">наш блог только начинается…</p>
+              </div>
+
+              {/* total score */}
+              <div className="px-6 pb-1 pt-6 text-center">
+                <div className="font-display text-5xl font-bold text-cocoa">{total}</div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">баллов у отряда</div>
+              </div>
+
+              {/* team likes */}
+              <div className="px-6 pb-5 pt-5">
+                <div className="relative flex items-center justify-between gap-3 rounded-2xl bg-secondary/60 px-4 py-3">
+                  {(floats[squad.id] || []).map((f) => (
+                    <span
+                      key={f.id}
+                      className="pointer-events-none absolute left-8 top-0 z-20 animate-float-up text-2xl"
+                    >
+                      ❤️
+                    </span>
+                  ))}
+                  <button
+                    onClick={() => addTeamLike(squad.id)}
+                    disabled={!isCounselor}
+                    aria-label="Лайк отряду"
+                    className={`text-3xl transition-transform ${poppingId === `team-${squad.id}` ? 'animate-heart-pop' : ''} ${isCounselor ? 'cursor-pointer hover:scale-110 active:scale-95' : 'cursor-not-allowed opacity-60'}`}
+                  >
+                    ❤️
+                  </button>
+                  <div className="flex-1 leading-tight">
+                    <div className="font-display text-lg font-bold text-cocoa">{squad.teamLikes}</div>
+                    <div className="text-[11px] text-muted-foreground">командных баллов</div>
+                  </div>
+                  {isCounselor && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => removeTeamLike(squad.id)}
+                        disabled={squad.teamLikes === 0}
+                        aria-label="Убрать командный балл"
+                        className={`flex h-9 w-9 items-center justify-center rounded-xl bg-card text-cocoa transition-all hover:brightness-95 active:scale-90 ${squad.teamLikes === 0 ? 'cursor-not-allowed opacity-40' : ''}`}
+                      >
+                        <Icon name="Minus" size={15} />
+                      </button>
+                      <button
+                        onClick={() => addTeamLike(squad.id)}
+                        aria-label="Добавить командный балл"
+                        className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-all hover:brightness-105 active:scale-90"
+                      >
+                        <Icon name="Plus" size={15} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* members ranking */}
+              <div className="px-6 pb-6">
+                <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <Icon name="Users" size={13} />
+                  Рейтинг участниц
+                </div>
+                <div className="space-y-2">
+                  {orderedMembers.map((member, mi) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center gap-3 rounded-2xl bg-secondary/40 px-3 py-2.5"
+                    >
+                      <span className="w-5 flex-shrink-0 text-center text-sm">
+                        {!isOrderStale && memberMedals[mi] ? memberMedals[mi] : (
+                          <span className="text-xs font-semibold text-cocoa/50">{mi + 1}</span>
+                        )}
+                      </span>
+                      <span className="flex-1 truncate text-sm font-medium text-cocoa">{member.name}</span>
+                      <span className={`flex items-center gap-1 text-sm font-bold text-cocoa transition-transform ${poppingId === member.id ? 'animate-heart-pop' : ''}`}>
+                        ❤️ {member.likes}
+                      </span>
+                      {isCounselor && (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => removeMemberLike(squad.id, member.id)}
+                            disabled={member.likes === 0}
+                            aria-label="Убрать лайк участнице"
+                            className={`flex h-7 w-7 items-center justify-center rounded-lg bg-card text-cocoa transition-all hover:brightness-95 active:scale-90 ${member.likes === 0 ? 'cursor-not-allowed opacity-40' : ''}`}
+                          >
+                            <Icon name="Minus" size={12} />
+                          </button>
+                          <button
+                            onClick={() => addMemberLike(squad.id, member.id)}
+                            aria-label="Поставить лайк участнице"
+                            className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-all hover:brightness-105 active:scale-90"
+                          >
+                            <Icon name="Plus" size={12} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {!isCounselor && (
+                  <p className="mt-4 flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                    <Icon name="Lock" size={12} /> Лайки доступны только вожатым
+                  </p>
+                )}
+              </div>
+            </article>
+          );
+        })}
       </main>
 
       {/* Footer */}
