@@ -18,7 +18,15 @@ export default {
 			}
 		},
 		extend: {
+			fontFamily: {
+				display: ['Comfortaa', 'cursive'],
+				body: ['Golos Text', 'sans-serif'],
+			},
 			colors: {
+				cream: 'hsl(var(--cream))',
+				sand: 'hsl(var(--sand))',
+				rosee: 'hsl(var(--rosee))',
+				cocoa: 'hsl(var(--cocoa))',
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',
 				ring: 'hsl(var(--ring))',
@@ -70,25 +78,39 @@ export default {
 			},
 			keyframes: {
 				'accordion-down': {
-					from: {
-						height: '0'
-					},
-					to: {
-						height: 'var(--radix-accordion-content-height)'
-					}
+					from: { height: '0' },
+					to: { height: 'var(--radix-accordion-content-height)' }
 				},
 				'accordion-up': {
-					from: {
-						height: 'var(--radix-accordion-content-height)'
-					},
-					to: {
-						height: '0'
-					}
+					from: { height: 'var(--radix-accordion-content-height)' },
+					to: { height: '0' }
+				},
+				'heart-pop': {
+					'0%': { transform: 'scale(1)' },
+					'40%': { transform: 'scale(1.35)' },
+					'70%': { transform: 'scale(0.9)' },
+					'100%': { transform: 'scale(1)' }
+				},
+				'float-up': {
+					'0%': { transform: 'translate(-50%, 0) scale(0.6)', opacity: '0.9' },
+					'100%': { transform: 'translate(-50%, -70px) scale(1.2)', opacity: '0' }
+				},
+				'fade-in': {
+					from: { opacity: '0', transform: 'translateY(12px)' },
+					to: { opacity: '1', transform: 'translateY(0)' }
+				},
+				'card-rise': {
+					from: { opacity: '0', transform: 'translateY(24px) scale(0.98)' },
+					to: { opacity: '1', transform: 'translateY(0) scale(1)' }
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'heart-pop': 'heart-pop 0.5s ease-in-out',
+				'float-up': 'float-up 0.9s ease-out forwards',
+				'fade-in': 'fade-in 0.6s ease-out forwards',
+				'card-rise': 'card-rise 0.6s ease-out forwards'
 			}
 		}
 	},
