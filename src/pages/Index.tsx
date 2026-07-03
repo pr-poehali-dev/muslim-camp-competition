@@ -11,6 +11,7 @@ interface Squad {
 }
 
 const STORAGE_KEY = 'camp_squad_likes_v1';
+const ORDER_KEY = 'camp_squad_order_v1';
 
 const initialSquads: Squad[] = [
   { id: 1, name: 'Отряд 1', handle: '@otryad_one', emoji: '🌷', gradient: 'from-[hsl(350,60%,88%)] to-[hsl(30,50%,86%)]', likes: 0 },
@@ -37,12 +38,21 @@ const Index = () => {
     return initialSquads;
   });
 
+  const [order, setOrder] = useState<number[]>(() => {
+    try {
+      const saved = localStorage.getItem(ORDER_KEY);
+      if (saved) return JSON.parse(saved) as number[];
+    } catch { /* ignore */ }
+    return [...squads].sort((a, b) => b.likes - a.likes).map((s) => s.id);
+  });
+
   const [isCounselor, setIsCounselor] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
   const [poppingId, setPoppingId] = useState<number | null>(null);
   const [floats, setFloats] = useState<Record<number, FloatingHeart[]>>({});
+  const [justRefreshed, setJustRefreshed] = useState(false);
   const floatCounter = useRef(0);
 
   useEffect(() => {
@@ -51,7 +61,25 @@ const Index = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
   }, [squads]);
 
-  const sorted = [...squads].sort((a, b) => b.likes - a.likes);
+  useEffect(() => {
+    localStorage.setItem(ORDER_KEY, JSON.stringify(order));
+  }, [order]);
+
+  const refreshOrder = () => {
+    const newOrder = [...squads].sort((a, b) => b.likes - a.likes).map((s) => s.id);
+    setOrder(newOrder);
+    setJustRefreshed(true);
+    setTimeout(() => setJustRefreshed(false), 900);
+  };
+
+  const isOrderStale = order.some((id, idx) => {
+    const properOrder = [...squads].sort((a, b) => b.likes - a.likes).map((s) => s.id);
+    return properOrder[idx] !== id;
+  });
+
+  const sorted = order
+    .map((id) => squads.find((s) => s.id === id))
+    .filter((s): s is Squad => Boolean(s));
 
   const addLike = (id: number) => {
     if (!isCounselor) return;
@@ -97,7 +125,7 @@ const Index = () => {
             Войти как вожатый
           </button>
         ) : (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3">
             <span className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-cocoa shadow-sm">
               Режим вожатого включён 🤎
             </span>
@@ -111,6 +139,22 @@ const Index = () => {
           </div>
         )}
       </div>
+
+      {isCounselor && (
+        <div className="mx-auto mt-4 flex max-w-5xl justify-end">
+          <button
+            onClick={refreshOrder}
+            className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition-all active:scale-95 ${
+              isOrderStale
+                ? 'animate-pulse bg-primary text-primary-foreground hover:brightness-105'
+                : 'bg-card text-muted-foreground hover:scale-105'
+            }`}
+          >
+            <Icon name={justRefreshed ? 'Check' : 'RefreshCw'} size={16} />
+            {isOrderStale ? 'Обновить рейтинг' : 'Рейтинг актуален'}
+          </button>
+        </div>
+      )}
 
       {/* Login panel */}
       {showLogin && !isCounselor && (
@@ -154,7 +198,7 @@ const Index = () => {
             style={{ animationDelay: `${i * 90}ms`, opacity: 0 }}
           >
             {/* rank badge */}
-            {rankLabels[i] && (
+            {!isOrderStale && rankLabels[i] && (
               <div className="absolute right-4 top-4 z-10 text-2xl drop-shadow-sm">{rankLabels[i]}</div>
             )}
 
