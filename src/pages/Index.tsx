@@ -284,10 +284,84 @@ const Index = () => {
         <h1 className="font-display text-3xl font-bold leading-tight text-cocoa sm:text-5xl">
           ❤️ Кто наберёт больше лайков?
         </h1>
-        <p className="mx-auto mt-4 max-w-xl text-base text-muted-foreground sm:text-lg">
-          За хорошие поступки, участие в активностях, помощь и поддержку своего отряда.
-        </p>
       </header>
+
+      {/* Criteria */}
+      <section className="mx-auto mt-8 grid max-w-4xl animate-fade-in grid-cols-1 gap-5 sm:grid-cols-2">
+        <div className="rounded-3xl bg-card p-6 shadow-[0_10px_36px_-16px_rgba(120,80,60,0.3)]">
+          <div className="mb-4 flex items-center gap-2 font-display text-lg font-bold text-cocoa">
+            <Icon name="Sparkles" size={20} className="text-primary" />
+            Как получить баллы
+          </div>
+          <ul className="space-y-2.5 text-sm text-cocoa/85">
+            <li className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex-shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-cocoa">+1</span>
+              участие в мастер-классах
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex-shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-cocoa">+3</span>
+              активность на уроках, мастер-классах
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex-shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-cocoa">+3</span>
+              дежурство
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex-shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-cocoa">+1–5</span>
+              помощь вожатым
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex-shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-cocoa">+25</span>
+              победа в конкурсе
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex-shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-cocoa">+25</span>
+              самый успешный блог (в конце лагеря)
+            </li>
+          </ul>
+        </div>
+
+        <div className="rounded-3xl bg-card p-6 shadow-[0_10px_36px_-16px_rgba(120,80,60,0.3)]">
+          <div className="mb-4 flex items-center gap-2 font-display text-lg font-bold text-cocoa">
+            <Icon name="TriangleAlert" size={20} className="text-destructive" />
+            Как потерять баллы
+          </div>
+          <ul className="space-y-2.5 text-sm text-cocoa/85">
+            <li className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex-shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-bold text-destructive">−1</span>
+              опоздание на МК/урок
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex-shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-bold text-destructive">−3</span>
+              неучастие в запланированном занятии
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex-shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-bold text-destructive">−3</span>
+              использование ненормативной лексики
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex-shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-bold text-destructive">−3</span>
+              несоблюдение хиджаба на улице
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex-shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-bold text-destructive">−10</span>
+              нарушение тишины после отбоя
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex-shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-bold text-destructive">−25</span>
+              пропуск намаза
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex-shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-bold text-destructive">−25</span>
+              выход с территории лагеря
+            </li>
+            <li className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex-shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-bold text-destructive">−25</span>
+              выход из дома ночью
+            </li>
+          </ul>
+        </div>
+      </section>
 
       {/* Cards */}
       <main className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-2">
