@@ -66,6 +66,11 @@ const Index = () => {
     }, 900);
   };
 
+  const removeLike = (id: number) => {
+    if (!isCounselor) return;
+    setSquads((prev) => prev.map((s) => (s.id === id ? { ...s, likes: Math.max(0, s.likes - 1) } : s)));
+  };
+
   const handleLogin = () => {
     if (password === PASSWORD) {
       setIsCounselor(true);
@@ -191,18 +196,32 @@ const Index = () => {
               <div className="mt-3 font-display text-4xl font-bold text-cocoa">{squad.likes}</div>
               <div className="text-xs uppercase tracking-wider text-muted-foreground">лайков собрано</div>
 
-              <button
-                onClick={() => addLike(squad.id)}
-                disabled={!isCounselor}
-                className={`mt-5 flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-semibold transition-all ${
-                  isCounselor
-                    ? 'bg-primary text-primary-foreground hover:brightness-105 active:scale-95'
-                    : 'cursor-not-allowed bg-muted text-muted-foreground'
-                }`}
-              >
-                <Icon name="Heart" size={17} />
-                Поставить лайк
-              </button>
+              <div className="mt-5 flex w-full items-center gap-2">
+                {isCounselor && (
+                  <button
+                    onClick={() => removeLike(squad.id)}
+                    disabled={squad.likes === 0}
+                    aria-label="Убрать лайк"
+                    className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-secondary text-cocoa transition-all hover:brightness-95 active:scale-95 ${
+                      squad.likes === 0 ? 'cursor-not-allowed opacity-40' : ''
+                    }`}
+                  >
+                    <Icon name="Minus" size={18} />
+                  </button>
+                )}
+                <button
+                  onClick={() => addLike(squad.id)}
+                  disabled={!isCounselor}
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-2xl py-3 text-sm font-semibold transition-all ${
+                    isCounselor
+                      ? 'bg-primary text-primary-foreground hover:brightness-105 active:scale-95'
+                      : 'cursor-not-allowed bg-muted text-muted-foreground'
+                  }`}
+                >
+                  <Icon name="Heart" size={17} />
+                  Поставить лайк
+                </button>
+              </div>
 
               {!isCounselor && (
                 <p className="mt-3 flex items-center gap-1 text-xs text-muted-foreground">
