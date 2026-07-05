@@ -12,6 +12,7 @@ interface Squad {
   name: string;
   handle: string;
   emoji: string;
+  avatar?: string;
   gradient: string;
   teamLikes: number;
   members: Member[];
@@ -33,10 +34,10 @@ const squadMemberNames: Record<number, string[]> = {
 };
 
 const baseSquads: Omit<Squad, 'teamLikes' | 'members'>[] = [
-  { id: 1, name: 'Я.Д.А.К.А.', handle: '', emoji: '🌷', gradient: 'from-[hsl(350,60%,88%)] to-[hsl(30,50%,86%)]' },
-  { id: 2, name: 'SABR', handle: '', emoji: '🌿', gradient: 'from-[hsl(140,30%,82%)] to-[hsl(40,45%,86%)]' },
-  { id: 3, name: 'Никяхнулись с мемами', handle: '', emoji: '☀️', gradient: 'from-[hsl(45,60%,84%)] to-[hsl(28,50%,84%)]' },
-  { id: 4, name: 'Мусульманки', handle: '', emoji: '🍑', gradient: 'from-[hsl(20,55%,86%)] to-[hsl(350,50%,88%)]' },
+  { id: 1, name: 'Я.Д.А.К.А.', handle: '', emoji: '🌷', avatar: 'https://cdn.poehali.dev/projects/1b7a3993-47d5-493f-b6da-b2a3a96a6b72/bucket/6a48ba13-eb8f-45e6-a32c-a95ccb16665f.jpg', gradient: 'from-[hsl(350,60%,88%)] to-[hsl(30,50%,86%)]' },
+  { id: 2, name: 'SABR', handle: '', emoji: '🌿', avatar: 'https://cdn.poehali.dev/projects/1b7a3993-47d5-493f-b6da-b2a3a96a6b72/bucket/e8169a59-5b19-4150-b08d-a0c86fe1a155.jpg', gradient: 'from-[hsl(140,30%,82%)] to-[hsl(40,45%,86%)]' },
+  { id: 3, name: 'Никяхнулись с мемами', handle: '', emoji: '☀️', avatar: 'https://cdn.poehali.dev/projects/1b7a3993-47d5-493f-b6da-b2a3a96a6b72/bucket/144c7e0c-32d3-4537-8e67-d9c1732308dd.jpg', gradient: 'from-[hsl(45,60%,84%)] to-[hsl(28,50%,84%)]' },
+  { id: 4, name: 'Мусульманки', handle: '', emoji: '🍑', avatar: 'https://cdn.poehali.dev/projects/1b7a3993-47d5-493f-b6da-b2a3a96a6b72/bucket/6f9c0728-d953-43cf-b018-884b6833d0dd.jpg', gradient: 'from-[hsl(20,55%,86%)] to-[hsl(350,50%,88%)]' },
 ];
 
 const makeMembers = (squadId: number): Member[] =>
@@ -392,8 +393,12 @@ const Index = () => {
               {/* profile header */}
               <div className={`bg-gradient-to-br ${squad.gradient} px-6 pb-8 pt-7`}>
                 <div className="flex items-center gap-4">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-card bg-cream text-3xl shadow-md">
-                    {squad.emoji}
+                  <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-4 border-card bg-cream text-3xl shadow-md">
+                    {squad.avatar ? (
+                      <img src={squad.avatar} alt={squad.name} className="h-full w-full object-cover" />
+                    ) : (
+                      squad.emoji
+                    )}
                   </div>
                   <div>
                     <h2 className="font-display text-xl font-bold text-cocoa">{squad.name}</h2>
