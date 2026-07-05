@@ -107,7 +107,7 @@ const Index = () => {
   const fetchLikes = async () => {
     if (pendingRequests.current > 0) return;
     try {
-      const res = await fetch(LIKES_API_URL);
+      const res = await fetch(`${LIKES_API_URL}?t=${Date.now()}`, { cache: 'no-store' });
       if (!res.ok) return;
       const data = await res.json();
       if (pendingRequests.current > 0) return;

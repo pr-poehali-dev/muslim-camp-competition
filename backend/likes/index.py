@@ -39,7 +39,11 @@ def handler(event: dict, context) -> dict:
 
             return {
                 'statusCode': 200,
-                'headers': {'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'},
+                'headers': {
+                    'Access-Control-Allow-Origin': '*',
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0'
+                },
                 'body': json.dumps({'squads': squads, 'members': members})
             }
 
