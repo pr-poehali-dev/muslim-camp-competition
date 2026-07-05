@@ -94,13 +94,23 @@ const Index = () => {
   const [poppingId, setPoppingId] = useState<string | null>(null);
   const [floats, setFloats] = useState<Record<number, FloatingHeart[]>>({});
   const [justRefreshed, setJustRefreshed] = useState(false);
+  const [entryAnimationDone, setEntryAnimationDone] = useState(false);
   const floatCounter = useRef(0);
 
+  const pendingRequests = useRef(0);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setEntryAnimationDone(true), 900);
+    return () => clearTimeout(timer);
+  }, []);
+
   const fetchLikes = async () => {
+    if (pendingRequests.current > 0) return;
     try {
       const res = await fetch(LIKES_API_URL);
       if (!res.ok) return;
       const data = await res.json();
+      if (pendingRequests.current > 0) return;
       const teamMap: Record<number, number> = {};
       Object.entries(data.squads || {}).forEach(([k, v]) => { teamMap[Number(k)] = Number(v); });
       const memberMap: Record<string, number> = {};
@@ -167,13 +177,30 @@ const Index = () => {
   };
 
   const sendLikeChange = async (type: 'squad' | 'member', id: number | string, delta: 1 | -1) => {
+    pendingRequests.current += 1;
     try {
-      await fetch(LIKES_API_URL, {
+      const res = await fetch(LIKES_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type, id, delta }),
       });
-    } catch { /* ignore */ }
+      if (res.ok) {
+        const data = await res.json();
+        const serverLikes = Number(data.likes);
+        if (!Number.isNaN(serverLikes)) {
+          if (type === 'squad') {
+            setSquads((prev) => prev.map((s) => (s.id === id ? { ...s, teamLikes: serverLikes } : s)));
+          } else {
+            setSquads((prev) => prev.map((s) => ({
+              ...s,
+              members: s.members.map((m) => (m.id === id ? { ...m, likes: serverLikes } : m)),
+            })));
+          }
+        }
+      }
+    } catch { /* ignore */ } finally {
+      pendingRequests.current = Math.max(0, pendingRequests.current - 1);
+    }
   };
 
   const addTeamLike = (id: number) => {
@@ -387,8 +414,8 @@ const Index = () => {
           return (
             <article
               key={squad.id}
-              className="group relative animate-card-rise overflow-hidden rounded-[2rem] bg-card shadow-[0_12px_40px_-16px_rgba(120,80,60,0.35)] transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_20px_50px_-16px_rgba(120,80,60,0.45)]"
-              style={{ animationDelay: `${i * 90}ms`, opacity: 0 }}
+              className={`group relative overflow-hidden rounded-[2rem] bg-card shadow-[0_12px_40px_-16px_rgba(120,80,60,0.35)] transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_20px_50px_-16px_rgba(120,80,60,0.45)] ${entryAnimationDone ? '' : 'animate-card-rise'}`}
+              style={entryAnimationDone ? undefined : { animationDelay: `${i * 90}ms`, opacity: 0 }}
             >
               {/* rank badge */}
               {!isOrderStale && squadMedals[i] && (
