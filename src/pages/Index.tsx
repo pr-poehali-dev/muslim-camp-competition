@@ -49,18 +49,21 @@ const buildSquads = (teamMap: Record<number, number>, memberMap: Record<string, 
 
 const squadTotal = (s: Squad) => s.teamLikes + s.members.reduce((sum, m) => sum + m.likes, 0);
 
-const sortSquads = (list: Squad[]) => [...list].sort((a, b) => squadTotal(b) - squadTotal(a));
-const sortMembers = (members: Member[]) => [...members].sort((a, b) => b.likes - a.likes);
+const computeSquadOrder = (list: Squad[]) => [...list].sort((a, b) => squadTotal(b) - squadTotal(a)).map((s) => s.id);
+const computeMemberOrder = (squad: Squad) => [...squad.members].sort((a, b) => b.likes - a.likes).map((m) => m.id);
 
 interface FloatingHeart {
   id: number;
 }
 
 const Index = () => {
-  const [savedSquads, setSavedSquads] = useState<Squad[]>(() => buildSquads({}, {}));
-  const [draftSquads, setDraftSquads] = useState<Squad[]>(() => buildSquads({}, {}));
+  const [squads, setSquads] = useState<Squad[]>(() => buildSquads({}, {}));
+  const [orderIds, setOrderIds] = useState<number[]>(baseSquads.map((s) => s.id));
+  const [memberOrder, setMemberOrder] = useState<Record<number, string[]>>({});
+
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
@@ -81,15 +84,31 @@ const Index = () => {
   const [entryAnimationDone, setEntryAnimationDone] = useState(false);
   const floatCounter = useRef(0);
 
+  const isDirtyRef = useRef(false);
+  const isSavingRef = useRef(false);
+
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
+
+  useEffect(() => {
+    isSavingRef.current = isSaving;
+  }, [isSaving]);
+
   useEffect(() => {
     const timer = setTimeout(() => setEntryAnimationDone(true), 900);
     return () => clearTimeout(timer);
   }, []);
 
-  const hasDraftChangesRef = useRef(false);
+  const applyOrder = (list: Squad[]) => {
+    setOrderIds(computeSquadOrder(list));
+    const mo: Record<number, string[]> = {};
+    list.forEach((s) => { mo[s.id] = computeMemberOrder(s); });
+    setMemberOrder(mo);
+  };
 
   const fetchLikes = async (force = false) => {
-    if (hasDraftChangesRef.current && !force) return;
+    if ((isDirtyRef.current || isSavingRef.current) && !force) return;
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -101,14 +120,15 @@ const Index = () => {
       }
       const data = await res.json();
       const teamMap: Record<number, number> = {};
-      Object.entries(data.squads || {}).forEach(([k, v]) => { teamMap[Number(k)] = Number(v); });
+      Object.entries(data?.squads || {}).forEach(([k, v]) => { teamMap[Number(k)] = Number(v); });
       const memberMap: Record<string, number> = {};
-      Object.entries(data.members || {}).forEach(([k, v]) => { memberMap[k] = Number(v); });
+      Object.entries(data?.members || {}).forEach(([k, v]) => { memberMap[k] = Number(v); });
       const fresh = buildSquads(teamMap, memberMap);
-      setSavedSquads(fresh);
-      setDraftSquads(fresh);
+      setSquads(fresh);
+      applyOrder(fresh);
       setIsLoaded(true);
       setLoadError(false);
+      setIsDirty(false);
     } catch {
       setLoadError(true);
     }
@@ -116,12 +136,10 @@ const Index = () => {
 
   useEffect(() => {
     fetchLikes();
-    const interval = setInterval(() => {
-      if (!isSaving) fetchLikes();
-    }, 15000);
+    const interval = setInterval(() => fetchLikes(), 20000);
     return () => clearInterval(interval);
-     
-  }, [isSaving]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     try {
@@ -129,24 +147,9 @@ const Index = () => {
     } catch { /* ignore */ }
   }, [isCounselor]);
 
-  const hasUnsavedChanges = (() => {
-    if (savedSquads.length !== draftSquads.length) return true;
-    return draftSquads.some((s) => {
-      const saved = savedSquads.find((x) => x.id === s.id);
-      if (!saved) return true;
-      if (saved.teamLikes !== s.teamLikes) return true;
-      return s.members.some((m) => {
-        const savedMember = saved.members.find((x) => x.id === m.id);
-        return !savedMember || savedMember.likes !== m.likes;
-      });
-    });
-  })();
-
-  useEffect(() => {
-    hasDraftChangesRef.current = hasUnsavedChanges;
-  }, [hasUnsavedChanges]);
-
-  const displaySquads = sortSquads(savedSquads);
+  const orderedSquads = orderIds
+    .map((id) => squads.find((s) => s.id === id))
+    .filter((s): s is Squad => Boolean(s));
 
   const popHeart = (key: string) => {
     setPoppingId(key);
@@ -163,33 +166,37 @@ const Index = () => {
 
   const addTeamLike = (id: number) => {
     if (!isCounselor) return;
-    setDraftSquads((prev) => prev.map((s) => (s.id === id ? { ...s, teamLikes: s.teamLikes + 1 } : s)));
+    setSquads((prev) => prev.map((s) => (s.id === id ? { ...s, teamLikes: s.teamLikes + 1 } : s)));
+    setIsDirty(true);
     popHeart(`team-${id}`);
     spawnFloat(id);
   };
 
   const removeTeamLike = (id: number) => {
     if (!isCounselor) return;
-    setDraftSquads((prev) => prev.map((s) => (s.id === id ? { ...s, teamLikes: Math.max(0, s.teamLikes - 1) } : s)));
+    setSquads((prev) => prev.map((s) => (s.id === id ? { ...s, teamLikes: Math.max(0, s.teamLikes - 1) } : s)));
+    setIsDirty(true);
   };
 
   const addMemberLike = (squadId: number, memberId: string) => {
     if (!isCounselor) return;
-    setDraftSquads((prev) => prev.map((s) => (
+    setSquads((prev) => prev.map((s) => (
       s.id === squadId
         ? { ...s, members: s.members.map((m) => (m.id === memberId ? { ...m, likes: m.likes + 1 } : m)) }
         : s
     )));
+    setIsDirty(true);
     popHeart(memberId);
   };
 
   const removeMemberLike = (squadId: number, memberId: string) => {
     if (!isCounselor) return;
-    setDraftSquads((prev) => prev.map((s) => (
+    setSquads((prev) => prev.map((s) => (
       s.id === squadId
         ? { ...s, members: s.members.map((m) => (m.id === memberId ? { ...m, likes: Math.max(0, m.likes - 1) } : m)) }
         : s
     )));
+    setIsDirty(true);
   };
 
   const saveChanges = async () => {
@@ -198,7 +205,7 @@ const Index = () => {
     try {
       const squadsPayload: Record<number, number> = {};
       const membersPayload: Record<string, number> = {};
-      draftSquads.forEach((s) => {
+      squads.forEach((s) => {
         squadsPayload[s.id] = s.teamLikes;
         s.members.forEach((m) => { membersPayload[m.id] = m.likes; });
       });
@@ -211,7 +218,8 @@ const Index = () => {
 
       if (!res.ok) throw new Error('save failed');
 
-      setSavedSquads(draftSquads);
+      applyOrder(squads);
+      setIsDirty(false);
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 1500);
     } catch {
@@ -267,15 +275,15 @@ const Index = () => {
         <div className="mx-auto mt-4 flex max-w-5xl flex-col items-end gap-2">
           <button
             onClick={saveChanges}
-            disabled={!hasUnsavedChanges || isSaving}
+            disabled={!isDirty || isSaving}
             className={`flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold shadow-sm transition-all active:scale-95 ${
-              !hasUnsavedChanges && !isSaving
+              !isDirty && !isSaving
                 ? 'bg-card text-muted-foreground'
                 : 'bg-primary text-primary-foreground hover:brightness-105'
-            } ${(!hasUnsavedChanges || isSaving) ? 'cursor-not-allowed opacity-70' : ''}`}
+            } ${(!isDirty || isSaving) ? 'cursor-not-allowed opacity-70' : ''}`}
           >
             <Icon name={isSaving ? 'Loader2' : justSaved ? 'Check' : 'Save'} size={16} className={isSaving ? 'animate-spin' : ''} />
-            {isSaving ? 'Сохраняем…' : justSaved ? 'Сохранено!' : hasUnsavedChanges ? 'Сохранить изменения' : 'Все изменения сохранены'}
+            {isSaving ? 'Сохраняем…' : justSaved ? 'Сохранено!' : isDirty ? 'Сохранить изменения' : 'Все изменения сохранены'}
           </button>
           {saveError && (
             <p className="flex items-center gap-1 text-xs text-rosee">
@@ -415,10 +423,12 @@ const Index = () => {
         </div>
       )}
       <main className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-2">
-        {isLoaded && displaySquads.map((squad, i) => {
-          const draftSquad = draftSquads.find((s) => s.id === squad.id) || squad;
-          const total = squadTotal(draftSquad);
-          const orderedMembers = sortMembers(draftSquad.members);
+        {isLoaded && orderedSquads.map((squad, i) => {
+          const total = squadTotal(squad);
+          const orderIdsForSquad = memberOrder[squad.id] || computeMemberOrder(squad);
+          const orderedMembers = orderIdsForSquad
+            .map((mid) => squad.members.find((m) => m.id === mid))
+            .filter((m): m is Member => Boolean(m));
 
           return (
             <article
@@ -427,7 +437,7 @@ const Index = () => {
               style={entryAnimationDone ? undefined : { animationDelay: `${i * 90}ms`, opacity: 0 }}
             >
               {/* rank badge */}
-              {squadMedals[i] && (
+              {!isDirty && squadMedals[i] && (
                 <div className="absolute right-4 top-4 z-10 text-2xl drop-shadow-sm">{squadMedals[i]}</div>
               )}
 
@@ -474,16 +484,16 @@ const Index = () => {
                     ❤️
                   </button>
                   <div className="flex-1 leading-tight">
-                    <div className="font-display text-lg font-bold text-cocoa">{draftSquad.teamLikes}</div>
+                    <div className="font-display text-lg font-bold text-cocoa">{squad.teamLikes}</div>
                     <div className="text-[11px] text-muted-foreground">командных баллов</div>
                   </div>
                   {isCounselor && (
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => removeTeamLike(squad.id)}
-                        disabled={draftSquad.teamLikes === 0}
+                        disabled={squad.teamLikes === 0}
                         aria-label="Убрать командный балл"
-                        className={`flex h-9 w-9 items-center justify-center rounded-xl bg-card text-cocoa transition-all hover:brightness-95 active:scale-90 ${draftSquad.teamLikes === 0 ? 'cursor-not-allowed opacity-40' : ''}`}
+                        className={`flex h-9 w-9 items-center justify-center rounded-xl bg-card text-cocoa transition-all hover:brightness-95 active:scale-90 ${squad.teamLikes === 0 ? 'cursor-not-allowed opacity-40' : ''}`}
                       >
                         <Icon name="Minus" size={15} />
                       </button>
@@ -512,7 +522,7 @@ const Index = () => {
                       className="flex items-center gap-3 rounded-2xl bg-secondary/40 px-3 py-2.5"
                     >
                       <span className="w-5 flex-shrink-0 text-center text-sm">
-                        {memberMedals[mi] ? memberMedals[mi] : (
+                        {!isDirty && memberMedals[mi] ? memberMedals[mi] : (
                           <span className="text-xs font-semibold text-cocoa/50">{mi + 1}</span>
                         )}
                       </span>
