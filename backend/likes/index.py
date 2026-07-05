@@ -4,9 +4,9 @@ import psycopg2
 
 
 def handler(event: dict, context) -> dict:
-    """API для чтения и изменения баллов отрядов и участниц лагеря. Хранит данные в общей базе, доступной всем устройствам.
+    """API для чтения и сохранения баллов отрядов и участниц лагеря. Хранит данные в общей базе, доступной всем устройствам.
     Args: event с httpMethod, body, queryStringParameters; context с request_id
-    Returns: HTTP response dict со списком баллов или результатом изменения
+    Returns: HTTP response dict со списком баллов или результатом сохранения
     """
     method = event.get('httpMethod', 'GET')
 
@@ -24,7 +24,7 @@ def handler(event: dict, context) -> dict:
 
     dsn = os.environ['DATABASE_URL']
     conn = psycopg2.connect(dsn)
-    conn.autocommit = True
+    conn.autocommit = False
     cur = conn.cursor()
 
     try:
@@ -49,50 +49,39 @@ def handler(event: dict, context) -> dict:
 
         if method == 'POST':
             body_data = json.loads(event.get('body') or '{}')
-            target_type = body_data.get('type')
-            target_id = body_data.get('id')
-            delta = body_data.get('delta')
+            squads_data = body_data.get('squads')
+            members_data = body_data.get('members')
 
-            if target_type not in ('squad', 'member') or target_id is None or delta not in (1, -1):
+            if not isinstance(squads_data, dict) or not isinstance(members_data, dict):
                 return {
                     'statusCode': 400,
                     'headers': {'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'},
                     'body': json.dumps({'error': 'Некорректные параметры запроса'})
                 }
 
-            if target_type == 'squad':
-                squad_id = int(target_id)
+            for squad_id_str, likes in squads_data.items():
+                squad_id = int(squad_id_str)
+                likes_value = max(0, int(likes))
                 cur.execute(
-                    "UPDATE squad_likes SET likes = GREATEST(0, likes + %s) WHERE squad_id = %s RETURNING likes",
-                    (delta, squad_id)
+                    """INSERT INTO squad_likes (squad_id, likes) VALUES (%s, %s)
+                       ON CONFLICT (squad_id) DO UPDATE SET likes = EXCLUDED.likes""",
+                    (squad_id, likes_value)
                 )
-                row = cur.fetchone()
-                if row is None:
-                    cur.execute(
-                        "INSERT INTO squad_likes (squad_id, likes) VALUES (%s, GREATEST(0, %s)) RETURNING likes",
-                        (squad_id, delta)
-                    )
-                    row = cur.fetchone()
-                new_value = row[0]
-            else:
-                member_id = str(target_id)
+
+            for member_id, likes in members_data.items():
+                likes_value = max(0, int(likes))
                 cur.execute(
-                    "UPDATE member_likes SET likes = GREATEST(0, likes + %s) WHERE member_id = %s RETURNING likes",
-                    (delta, member_id)
+                    """INSERT INTO member_likes (member_id, likes) VALUES (%s, %s)
+                       ON CONFLICT (member_id) DO UPDATE SET likes = EXCLUDED.likes""",
+                    (str(member_id), likes_value)
                 )
-                row = cur.fetchone()
-                if row is None:
-                    cur.execute(
-                        "INSERT INTO member_likes (member_id, likes) VALUES (%s, GREATEST(0, %s)) RETURNING likes",
-                        (member_id, delta)
-                    )
-                    row = cur.fetchone()
-                new_value = row[0]
+
+            conn.commit()
 
             return {
                 'statusCode': 200,
                 'headers': {'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'},
-                'body': json.dumps({'likes': new_value})
+                'body': json.dumps({'saved': True})
             }
 
         return {
@@ -100,6 +89,9 @@ def handler(event: dict, context) -> dict:
             'headers': {'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'},
             'body': json.dumps({'error': 'Метод не поддерживается'})
         }
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         cur.close()
         conn.close()

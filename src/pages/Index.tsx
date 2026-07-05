@@ -18,8 +18,6 @@ interface Squad {
   members: Member[];
 }
 
-const SQUAD_ORDER_KEY = 'camp_squad_order_v2';
-const MEMBER_ORDER_KEY = 'camp_member_order_v2';
 const COUNSELOR_KEY = 'camp_counselor_mode_v1';
 const PASSWORD = 'blog2026';
 
@@ -49,36 +47,22 @@ const buildSquads = (teamMap: Record<number, number>, memberMap: Record<string, 
     members: makeMembers(s.id).map((m) => ({ ...m, likes: memberMap[m.id] ?? 0 })),
   }));
 
-const loadSquads = (): Squad[] => buildSquads({}, {});
-
 const squadTotal = (s: Squad) => s.teamLikes + s.members.reduce((sum, m) => sum + m.likes, 0);
+
+const sortSquads = (list: Squad[]) => [...list].sort((a, b) => squadTotal(b) - squadTotal(a));
+const sortMembers = (members: Member[]) => [...members].sort((a, b) => b.likes - a.likes);
 
 interface FloatingHeart {
   id: number;
 }
 
 const Index = () => {
-  const [squads, setSquads] = useState<Squad[]>(loadSquads);
-
-  const [squadOrder, setSquadOrder] = useState<number[]>(() => {
-    try {
-      const saved = localStorage.getItem(SQUAD_ORDER_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch { /* ignore */ }
-    const initial = loadSquads();
-    return [...initial].sort((a, b) => squadTotal(b) - squadTotal(a)).map((s) => s.id);
-  });
-
-  const [membersOrder, setMembersOrder] = useState<Record<number, string[]>>(() => {
-    try {
-      const saved = localStorage.getItem(MEMBER_ORDER_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch { /* ignore */ }
-    const initial = loadSquads();
-    const map: Record<number, string[]> = {};
-    initial.forEach((s) => { map[s.id] = [...s.members].sort((a, b) => b.likes - a.likes).map((m) => m.id); });
-    return map;
-  });
+  const [savedSquads, setSavedSquads] = useState<Squad[]>(() => buildSquads({}, {}));
+  const [draftSquads, setDraftSquads] = useState<Squad[]>(() => buildSquads({}, {}));
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
 
   const [isCounselor, setIsCounselor] = useState<boolean>(() => {
     try {
@@ -93,51 +77,41 @@ const Index = () => {
   const [error, setError] = useState(false);
   const [poppingId, setPoppingId] = useState<string | null>(null);
   const [floats, setFloats] = useState<Record<number, FloatingHeart[]>>({});
-  const [justRefreshed, setJustRefreshed] = useState(false);
   const [entryAnimationDone, setEntryAnimationDone] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
   const floatCounter = useRef(0);
-
-  const pendingRequests = useRef(0);
 
   useEffect(() => {
     const timer = setTimeout(() => setEntryAnimationDone(true), 900);
     return () => clearTimeout(timer);
   }, []);
 
-  const fetchLikes = async () => {
-    if (pendingRequests.current > 0) return;
+  const hasDraftChangesRef = useRef(false);
+
+  const fetchLikes = async (force = false) => {
+    if (hasDraftChangesRef.current && !force) return;
     try {
       const res = await fetch(`${LIKES_API_URL}?t=${Date.now()}`, { cache: 'no-store' });
       if (!res.ok) return;
       const data = await res.json();
-      if (pendingRequests.current > 0) return;
       const teamMap: Record<number, number> = {};
       Object.entries(data.squads || {}).forEach(([k, v]) => { teamMap[Number(k)] = Number(v); });
       const memberMap: Record<string, number> = {};
       Object.entries(data.members || {}).forEach(([k, v]) => { memberMap[k] = Number(v); });
-      setSquads(buildSquads(teamMap, memberMap));
+      const fresh = buildSquads(teamMap, memberMap);
+      setSavedSquads(fresh);
+      setDraftSquads(fresh);
       setIsLoaded(true);
     } catch { /* ignore */ }
   };
 
   useEffect(() => {
     fetchLikes();
-    const interval = setInterval(fetchLikes, 5000);
+    const interval = setInterval(() => {
+      if (!isSaving) fetchLikes();
+    }, 60000);
     return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(SQUAD_ORDER_KEY, JSON.stringify(squadOrder));
-    } catch { /* ignore */ }
-  }, [squadOrder]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(MEMBER_ORDER_KEY, JSON.stringify(membersOrder));
-    } catch { /* ignore */ }
-  }, [membersOrder]);
+     
+  }, [isSaving]);
 
   useEffect(() => {
     try {
@@ -145,31 +119,24 @@ const Index = () => {
     } catch { /* ignore */ }
   }, [isCounselor]);
 
-  const computeSquadOrder = () => [...squads].sort((a, b) => squadTotal(b) - squadTotal(a)).map((s) => s.id);
-  const computeMemberOrder = (squad: Squad) => [...squad.members].sort((a, b) => b.likes - a.likes).map((m) => m.id);
-
-  const refreshOrder = () => {
-    setSquadOrder(computeSquadOrder());
-    const map: Record<number, string[]> = {};
-    squads.forEach((s) => { map[s.id] = computeMemberOrder(s); });
-    setMembersOrder(map);
-    setJustRefreshed(true);
-    setTimeout(() => setJustRefreshed(false), 900);
-  };
-
-  const isOrderStale = (() => {
-    const properSquadOrder = computeSquadOrder();
-    if (squadOrder.some((id, idx) => properSquadOrder[idx] !== id)) return true;
-    return squads.some((s) => {
-      const proper = computeMemberOrder(s);
-      const current = membersOrder[s.id] || [];
-      return proper.some((id, idx) => current[idx] !== id);
+  const hasUnsavedChanges = (() => {
+    if (savedSquads.length !== draftSquads.length) return true;
+    return draftSquads.some((s) => {
+      const saved = savedSquads.find((x) => x.id === s.id);
+      if (!saved) return true;
+      if (saved.teamLikes !== s.teamLikes) return true;
+      return s.members.some((m) => {
+        const savedMember = saved.members.find((x) => x.id === m.id);
+        return !savedMember || savedMember.likes !== m.likes;
+      });
     });
   })();
 
-  const sortedSquads = squadOrder
-    .map((id) => squads.find((s) => s.id === id))
-    .filter((s): s is Squad => Boolean(s));
+  useEffect(() => {
+    hasDraftChangesRef.current = hasUnsavedChanges;
+  }, [hasUnsavedChanges]);
+
+  const displaySquads = sortSquads(savedSquads);
 
   const popHeart = (key: string) => {
     setPoppingId(key);
@@ -184,66 +151,64 @@ const Index = () => {
     }, 900);
   };
 
-  const sendLikeChange = async (type: 'squad' | 'member', id: number | string, delta: 1 | -1) => {
-    pendingRequests.current += 1;
-    try {
-      const res = await fetch(LIKES_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, id, delta }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const serverLikes = Number(data.likes);
-        if (!Number.isNaN(serverLikes)) {
-          if (type === 'squad') {
-            setSquads((prev) => prev.map((s) => (s.id === id ? { ...s, teamLikes: serverLikes } : s)));
-          } else {
-            setSquads((prev) => prev.map((s) => ({
-              ...s,
-              members: s.members.map((m) => (m.id === id ? { ...m, likes: serverLikes } : m)),
-            })));
-          }
-        }
-      }
-    } catch { /* ignore */ } finally {
-      pendingRequests.current = Math.max(0, pendingRequests.current - 1);
-    }
-  };
-
   const addTeamLike = (id: number) => {
     if (!isCounselor) return;
-    setSquads((prev) => prev.map((s) => (s.id === id ? { ...s, teamLikes: s.teamLikes + 1 } : s)));
+    setDraftSquads((prev) => prev.map((s) => (s.id === id ? { ...s, teamLikes: s.teamLikes + 1 } : s)));
     popHeart(`team-${id}`);
     spawnFloat(id);
-    sendLikeChange('squad', id, 1);
   };
 
   const removeTeamLike = (id: number) => {
     if (!isCounselor) return;
-    setSquads((prev) => prev.map((s) => (s.id === id ? { ...s, teamLikes: Math.max(0, s.teamLikes - 1) } : s)));
-    sendLikeChange('squad', id, -1);
+    setDraftSquads((prev) => prev.map((s) => (s.id === id ? { ...s, teamLikes: Math.max(0, s.teamLikes - 1) } : s)));
   };
 
   const addMemberLike = (squadId: number, memberId: string) => {
     if (!isCounselor) return;
-    setSquads((prev) => prev.map((s) => (
+    setDraftSquads((prev) => prev.map((s) => (
       s.id === squadId
         ? { ...s, members: s.members.map((m) => (m.id === memberId ? { ...m, likes: m.likes + 1 } : m)) }
         : s
     )));
     popHeart(memberId);
-    sendLikeChange('member', memberId, 1);
   };
 
   const removeMemberLike = (squadId: number, memberId: string) => {
     if (!isCounselor) return;
-    setSquads((prev) => prev.map((s) => (
+    setDraftSquads((prev) => prev.map((s) => (
       s.id === squadId
         ? { ...s, members: s.members.map((m) => (m.id === memberId ? { ...m, likes: Math.max(0, m.likes - 1) } : m)) }
         : s
     )));
-    sendLikeChange('member', memberId, -1);
+  };
+
+  const saveChanges = async () => {
+    setIsSaving(true);
+    setSaveError(false);
+    try {
+      const squadsPayload: Record<number, number> = {};
+      const membersPayload: Record<string, number> = {};
+      draftSquads.forEach((s) => {
+        squadsPayload[s.id] = s.teamLikes;
+        s.members.forEach((m) => { membersPayload[m.id] = m.likes; });
+      });
+
+      const res = await fetch(LIKES_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ squads: squadsPayload, members: membersPayload }),
+      });
+
+      if (!res.ok) throw new Error('save failed');
+
+      setSavedSquads(draftSquads);
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 1500);
+    } catch {
+      setSaveError(true);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleLogin = () => {
@@ -289,18 +254,24 @@ const Index = () => {
       </div>
 
       {isCounselor && (
-        <div className="mx-auto mt-4 flex max-w-5xl justify-end">
+        <div className="mx-auto mt-4 flex max-w-5xl flex-col items-end gap-2">
           <button
-            onClick={refreshOrder}
-            className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition-all active:scale-95 ${
-              isOrderStale
-                ? 'animate-pulse bg-primary text-primary-foreground hover:brightness-105'
-                : 'bg-card text-muted-foreground hover:scale-105'
-            }`}
+            onClick={saveChanges}
+            disabled={!hasUnsavedChanges || isSaving}
+            className={`flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold shadow-sm transition-all active:scale-95 ${
+              !hasUnsavedChanges && !isSaving
+                ? 'bg-card text-muted-foreground'
+                : 'bg-primary text-primary-foreground hover:brightness-105'
+            } ${(!hasUnsavedChanges || isSaving) ? 'cursor-not-allowed opacity-70' : ''}`}
           >
-            <Icon name={justRefreshed ? 'Check' : 'RefreshCw'} size={16} />
-            {isOrderStale ? 'Обновить рейтинг' : 'Рейтинг актуален'}
+            <Icon name={isSaving ? 'Loader2' : justSaved ? 'Check' : 'Save'} size={16} className={isSaving ? 'animate-spin' : ''} />
+            {isSaving ? 'Сохраняем…' : justSaved ? 'Сохранено!' : hasUnsavedChanges ? 'Сохранить изменения' : 'Все изменения сохранены'}
           </button>
+          {saveError && (
+            <p className="flex items-center gap-1 text-xs text-rosee">
+              <Icon name="TriangleAlert" size={13} /> Не удалось сохранить — проверь интернет и попробуй ещё раз
+            </p>
+          )}
         </div>
       )}
 
@@ -419,11 +390,10 @@ const Index = () => {
         </div>
       )}
       <main className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-2">
-        {isLoaded && sortedSquads.map((squad, i) => {
-          const total = squadTotal(squad);
-          const orderedMembers = (membersOrder[squad.id] || computeMemberOrder(squad))
-            .map((mid) => squad.members.find((m) => m.id === mid))
-            .filter((m): m is Member => Boolean(m));
+        {isLoaded && displaySquads.map((squad, i) => {
+          const draftSquad = draftSquads.find((s) => s.id === squad.id) || squad;
+          const total = squadTotal(draftSquad);
+          const orderedMembers = sortMembers(draftSquad.members);
 
           return (
             <article
@@ -432,7 +402,7 @@ const Index = () => {
               style={entryAnimationDone ? undefined : { animationDelay: `${i * 90}ms`, opacity: 0 }}
             >
               {/* rank badge */}
-              {!isOrderStale && squadMedals[i] && (
+              {squadMedals[i] && (
                 <div className="absolute right-4 top-4 z-10 text-2xl drop-shadow-sm">{squadMedals[i]}</div>
               )}
 
@@ -479,16 +449,16 @@ const Index = () => {
                     ❤️
                   </button>
                   <div className="flex-1 leading-tight">
-                    <div className="font-display text-lg font-bold text-cocoa">{squad.teamLikes}</div>
+                    <div className="font-display text-lg font-bold text-cocoa">{draftSquad.teamLikes}</div>
                     <div className="text-[11px] text-muted-foreground">командных баллов</div>
                   </div>
                   {isCounselor && (
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => removeTeamLike(squad.id)}
-                        disabled={squad.teamLikes === 0}
+                        disabled={draftSquad.teamLikes === 0}
                         aria-label="Убрать командный балл"
-                        className={`flex h-9 w-9 items-center justify-center rounded-xl bg-card text-cocoa transition-all hover:brightness-95 active:scale-90 ${squad.teamLikes === 0 ? 'cursor-not-allowed opacity-40' : ''}`}
+                        className={`flex h-9 w-9 items-center justify-center rounded-xl bg-card text-cocoa transition-all hover:brightness-95 active:scale-90 ${draftSquad.teamLikes === 0 ? 'cursor-not-allowed opacity-40' : ''}`}
                       >
                         <Icon name="Minus" size={15} />
                       </button>
@@ -517,7 +487,7 @@ const Index = () => {
                       className="flex items-center gap-3 rounded-2xl bg-secondary/40 px-3 py-2.5"
                     >
                       <span className="w-5 flex-shrink-0 text-center text-sm">
-                        {!isOrderStale && memberMedals[mi] ? memberMedals[mi] : (
+                        {memberMedals[mi] ? memberMedals[mi] : (
                           <span className="text-xs font-semibold text-cocoa/50">{mi + 1}</span>
                         )}
                       </span>
