@@ -95,6 +95,7 @@ const Index = () => {
   const [floats, setFloats] = useState<Record<number, FloatingHeart[]>>({});
   const [justRefreshed, setJustRefreshed] = useState(false);
   const [entryAnimationDone, setEntryAnimationDone] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
   const floatCounter = useRef(0);
 
   const pendingRequests = useRef(0);
@@ -116,6 +117,7 @@ const Index = () => {
       const memberMap: Record<string, number> = {};
       Object.entries(data.members || {}).forEach(([k, v]) => { memberMap[k] = Number(v); });
       setSquads(buildSquads(teamMap, memberMap));
+      setIsLoaded(true);
     } catch { /* ignore */ }
   };
 
@@ -126,15 +128,21 @@ const Index = () => {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(SQUAD_ORDER_KEY, JSON.stringify(squadOrder));
+    try {
+      localStorage.setItem(SQUAD_ORDER_KEY, JSON.stringify(squadOrder));
+    } catch { /* ignore */ }
   }, [squadOrder]);
 
   useEffect(() => {
-    localStorage.setItem(MEMBER_ORDER_KEY, JSON.stringify(membersOrder));
+    try {
+      localStorage.setItem(MEMBER_ORDER_KEY, JSON.stringify(membersOrder));
+    } catch { /* ignore */ }
   }, [membersOrder]);
 
   useEffect(() => {
-    localStorage.setItem(COUNSELOR_KEY, isCounselor ? 'true' : 'false');
+    try {
+      localStorage.setItem(COUNSELOR_KEY, isCounselor ? 'true' : 'false');
+    } catch { /* ignore */ }
   }, [isCounselor]);
 
   const computeSquadOrder = () => [...squads].sort((a, b) => squadTotal(b) - squadTotal(a)).map((s) => s.id);
@@ -404,8 +412,14 @@ const Index = () => {
       </section>
 
       {/* Cards */}
+      {!isLoaded && (
+        <div className="mx-auto mt-12 flex max-w-5xl items-center justify-center gap-2 text-sm text-muted-foreground">
+          <Icon name="Loader2" size={18} className="animate-spin" />
+          Загружаем баллы…
+        </div>
+      )}
       <main className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-2">
-        {sortedSquads.map((squad, i) => {
+        {isLoaded && sortedSquads.map((squad, i) => {
           const total = squadTotal(squad);
           const orderedMembers = (membersOrder[squad.id] || computeMemberOrder(squad))
             .map((mid) => squad.members.find((m) => m.id === mid))
