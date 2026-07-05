@@ -60,6 +60,7 @@ const Index = () => {
   const [savedSquads, setSavedSquads] = useState<Squad[]>(() => buildSquads({}, {}));
   const [draftSquads, setDraftSquads] = useState<Squad[]>(() => buildSquads({}, {}));
   const [isLoaded, setIsLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
@@ -90,8 +91,14 @@ const Index = () => {
   const fetchLikes = async (force = false) => {
     if (hasDraftChangesRef.current && !force) return;
     try {
-      const res = await fetch(`${LIKES_API_URL}?t=${Date.now()}`, { cache: 'no-store' });
-      if (!res.ok) return;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(`${LIKES_API_URL}?t=${Date.now()}`, { cache: 'no-store', signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!res.ok) {
+        setLoadError(true);
+        return;
+      }
       const data = await res.json();
       const teamMap: Record<number, number> = {};
       Object.entries(data.squads || {}).forEach(([k, v]) => { teamMap[Number(k)] = Number(v); });
@@ -101,14 +108,17 @@ const Index = () => {
       setSavedSquads(fresh);
       setDraftSquads(fresh);
       setIsLoaded(true);
-    } catch { /* ignore */ }
+      setLoadError(false);
+    } catch {
+      setLoadError(true);
+    }
   };
 
   useEffect(() => {
     fetchLikes();
     const interval = setInterval(() => {
       if (!isSaving) fetchLikes();
-    }, 60000);
+    }, 15000);
     return () => clearInterval(interval);
      
   }, [isSaving]);
@@ -383,10 +393,25 @@ const Index = () => {
       </section>
 
       {/* Cards */}
-      {!isLoaded && (
+      {!isLoaded && !loadError && (
         <div className="mx-auto mt-12 flex max-w-5xl items-center justify-center gap-2 text-sm text-muted-foreground">
           <Icon name="Loader2" size={18} className="animate-spin" />
           Загружаем баллы…
+        </div>
+      )}
+      {!isLoaded && loadError && (
+        <div className="mx-auto mt-12 flex max-w-5xl flex-col items-center justify-center gap-3 text-center">
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Icon name="WifiOff" size={18} />
+            Не получилось загрузить баллы — проверь интернет
+          </p>
+          <button
+            onClick={() => fetchLikes(true)}
+            className="flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-all hover:brightness-105 active:scale-95"
+          >
+            <Icon name="RefreshCw" size={15} />
+            Попробовать ещё раз
+          </button>
         </div>
       )}
       <main className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-2">
