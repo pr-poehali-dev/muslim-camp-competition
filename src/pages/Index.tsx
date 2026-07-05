@@ -119,6 +119,8 @@ const Index = () => {
         return;
       }
       const data = await res.json();
+      // защита от гонки: пока шёл запрос, вожатый мог начать вносить правки — тогда не затираем их
+      if ((isDirtyRef.current || isSavingRef.current) && !force) return;
       const teamMap: Record<number, number> = {};
       Object.entries(data?.squads || {}).forEach(([k, v]) => { teamMap[Number(k)] = Number(v); });
       const memberMap: Record<string, number> = {};
@@ -136,10 +138,13 @@ const Index = () => {
 
   useEffect(() => {
     fetchLikes();
+    // Пока включён режим вожатого, автообновление с сервера отключено —
+    // это исключает перезапись ещё не сохранённых изменений.
+    if (isCounselor) return;
     const interval = setInterval(() => fetchLikes(), 20000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isCounselor]);
 
   useEffect(() => {
     try {
