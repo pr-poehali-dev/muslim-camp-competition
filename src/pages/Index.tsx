@@ -25,15 +25,22 @@ const MEMBER_ORDER_KEY = 'camp_member_order_v2';
 const COUNSELOR_KEY = 'camp_counselor_mode_v1';
 const PASSWORD = 'blog2026';
 
+const squadMemberNames: Record<number, string[]> = {
+  1: ['Гилязутдинова Азалия', 'Гилязутдинова Диляра', 'Бикатова Камиля', 'Ломаева Алена', 'Балагатдинова Ясмина'],
+  2: ['Саттарова Румия', 'Абдуллина Амина', 'Бекчанова Динара', 'Измайлова Асия', 'Рахимова Айша', 'Нургалиева Лейсан'],
+  3: ['Мологалиева Риана', 'Нуруллина Амалия', 'Андреева Алина', 'Губайдуллина Джамиля', 'Зарипова Зарина'],
+  4: ['Ал Торшан Дана', 'Ал Торшан Ая', 'Хасанова Амина', 'Гайнетдинова Алия', 'Латыпова Малика'],
+};
+
 const baseSquads: Omit<Squad, 'teamLikes' | 'members'>[] = [
-  { id: 1, name: 'Отряд 1', handle: '@otryad_one', emoji: '🌷', gradient: 'from-[hsl(350,60%,88%)] to-[hsl(30,50%,86%)]' },
-  { id: 2, name: 'Отряд 2', handle: '@otryad_two', emoji: '🌿', gradient: 'from-[hsl(140,30%,82%)] to-[hsl(40,45%,86%)]' },
-  { id: 3, name: 'Отряд 3', handle: '@otryad_three', emoji: '☀️', gradient: 'from-[hsl(45,60%,84%)] to-[hsl(28,50%,84%)]' },
-  { id: 4, name: 'Отряд 4', handle: '@otryad_four', emoji: '🍑', gradient: 'from-[hsl(20,55%,86%)] to-[hsl(350,50%,88%)]' },
+  { id: 1, name: 'Я.Д.А.К.А.', handle: '', emoji: '🌷', gradient: 'from-[hsl(350,60%,88%)] to-[hsl(30,50%,86%)]' },
+  { id: 2, name: 'SABR', handle: '', emoji: '🌿', gradient: 'from-[hsl(140,30%,82%)] to-[hsl(40,45%,86%)]' },
+  { id: 3, name: 'Никяхнулись с мемами', handle: '', emoji: '☀️', gradient: 'from-[hsl(45,60%,84%)] to-[hsl(28,50%,84%)]' },
+  { id: 4, name: 'Мусульманки', handle: '', emoji: '🍑', gradient: 'from-[hsl(20,55%,86%)] to-[hsl(350,50%,88%)]' },
 ];
 
 const makeMembers = (squadId: number): Member[] =>
-  Array.from({ length: 5 }, (_, i) => ({ id: `${squadId}-${i + 1}`, name: `Участница ${i + 1}`, likes: 0 }));
+  (squadMemberNames[squadId] || []).map((name, i) => ({ id: `${squadId}-${i + 1}`, name, likes: 0 }));
 
 const loadSquads = (): Squad[] => {
   let teamMap: Record<number, number> = {};
@@ -390,7 +397,6 @@ const Index = () => {
                   </div>
                   <div>
                     <h2 className="font-display text-xl font-bold text-cocoa">{squad.name}</h2>
-                    <p className="text-sm text-cocoa/70">{squad.handle}</p>
                   </div>
                 </div>
                 <p className="mt-4 text-sm italic text-cocoa/80">наш блог только начинается…</p>
