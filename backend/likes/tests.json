@@ -1,0 +1,18 @@
+{
+  "tests": [
+    {
+      "name": "Получить все баллы",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {"squads": "object", "members": "object"},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "OPTIONS запрос",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    }
+  ]
+}

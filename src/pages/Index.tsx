@@ -18,9 +18,6 @@ interface Squad {
   members: Member[];
 }
 
-const OLD_STORAGE_KEY = 'camp_squad_likes_v1';
-const TEAM_LIKES_KEY = 'camp_squad_team_likes_v2';
-const MEMBER_LIKES_KEY = 'camp_squad_member_likes_v2';
 const SQUAD_ORDER_KEY = 'camp_squad_order_v2';
 const MEMBER_ORDER_KEY = 'camp_member_order_v2';
 const COUNSELOR_KEY = 'camp_counselor_mode_v1';
@@ -43,29 +40,16 @@ const baseSquads: Omit<Squad, 'teamLikes' | 'members'>[] = [
 const makeMembers = (squadId: number): Member[] =>
   (squadMemberNames[squadId] || []).map((name, i) => ({ id: `${squadId}-${i + 1}`, name, likes: 0 }));
 
-const loadSquads = (): Squad[] => {
-  let teamMap: Record<number, number> = {};
-  let memberMap: Record<string, number> = {};
-  try {
-    const savedTeam = localStorage.getItem(TEAM_LIKES_KEY);
-    if (savedTeam) {
-      teamMap = JSON.parse(savedTeam);
-    } else {
-      const old = localStorage.getItem(OLD_STORAGE_KEY);
-      if (old) teamMap = JSON.parse(old);
-    }
-  } catch { /* ignore */ }
-  try {
-    const savedMembers = localStorage.getItem(MEMBER_LIKES_KEY);
-    if (savedMembers) memberMap = JSON.parse(savedMembers);
-  } catch { /* ignore */ }
+const LIKES_API_URL = 'https://functions.poehali.dev/3c799b23-3771-470c-8583-75317ccb3b80';
 
-  return baseSquads.map((s) => ({
+const buildSquads = (teamMap: Record<number, number>, memberMap: Record<string, number>): Squad[] =>
+  baseSquads.map((s) => ({
     ...s,
     teamLikes: teamMap[s.id] ?? 0,
     members: makeMembers(s.id).map((m) => ({ ...m, likes: memberMap[m.id] ?? 0 })),
   }));
-};
+
+const loadSquads = (): Squad[] => buildSquads({}, {});
 
 const squadTotal = (s: Squad) => s.teamLikes + s.members.reduce((sum, m) => sum + m.likes, 0);
 
@@ -112,17 +96,24 @@ const Index = () => {
   const [justRefreshed, setJustRefreshed] = useState(false);
   const floatCounter = useRef(0);
 
-  useEffect(() => {
-    const map: Record<number, number> = {};
-    squads.forEach((s) => { map[s.id] = s.teamLikes; });
-    localStorage.setItem(TEAM_LIKES_KEY, JSON.stringify(map));
-  }, [squads]);
+  const fetchLikes = async () => {
+    try {
+      const res = await fetch(LIKES_API_URL);
+      if (!res.ok) return;
+      const data = await res.json();
+      const teamMap: Record<number, number> = {};
+      Object.entries(data.squads || {}).forEach(([k, v]) => { teamMap[Number(k)] = Number(v); });
+      const memberMap: Record<string, number> = {};
+      Object.entries(data.members || {}).forEach(([k, v]) => { memberMap[k] = Number(v); });
+      setSquads(buildSquads(teamMap, memberMap));
+    } catch { /* ignore */ }
+  };
 
   useEffect(() => {
-    const map: Record<string, number> = {};
-    squads.forEach((s) => s.members.forEach((m) => { map[m.id] = m.likes; }));
-    localStorage.setItem(MEMBER_LIKES_KEY, JSON.stringify(map));
-  }, [squads]);
+    fetchLikes();
+    const interval = setInterval(fetchLikes, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(SQUAD_ORDER_KEY, JSON.stringify(squadOrder));
@@ -175,16 +166,28 @@ const Index = () => {
     }, 900);
   };
 
+  const sendLikeChange = async (type: 'squad' | 'member', id: number | string, delta: 1 | -1) => {
+    try {
+      await fetch(LIKES_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, id, delta }),
+      });
+    } catch { /* ignore */ }
+  };
+
   const addTeamLike = (id: number) => {
     if (!isCounselor) return;
     setSquads((prev) => prev.map((s) => (s.id === id ? { ...s, teamLikes: s.teamLikes + 1 } : s)));
     popHeart(`team-${id}`);
     spawnFloat(id);
+    sendLikeChange('squad', id, 1);
   };
 
   const removeTeamLike = (id: number) => {
     if (!isCounselor) return;
     setSquads((prev) => prev.map((s) => (s.id === id ? { ...s, teamLikes: Math.max(0, s.teamLikes - 1) } : s)));
+    sendLikeChange('squad', id, -1);
   };
 
   const addMemberLike = (squadId: number, memberId: string) => {
@@ -195,6 +198,7 @@ const Index = () => {
         : s
     )));
     popHeart(memberId);
+    sendLikeChange('member', memberId, 1);
   };
 
   const removeMemberLike = (squadId: number, memberId: string) => {
@@ -204,6 +208,7 @@ const Index = () => {
         ? { ...s, members: s.members.map((m) => (m.id === memberId ? { ...m, likes: Math.max(0, m.likes - 1) } : m)) }
         : s
     )));
+    sendLikeChange('member', memberId, -1);
   };
 
   const handleLogin = () => {
